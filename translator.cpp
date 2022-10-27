@@ -12,28 +12,36 @@ struct ImportantIdents {
 };
 
 class Translation {
+    typedef std::string State;
+
   private:
     const TuringMachine &input_;
     transitions_t result_transitions_;
 
     SymbolSet res_alphabet_, res_states_;
-    ImportantIdents important_states_;
+    ImportantIdents important_idents_;
 
-    std::unordered_map<std::string, std::string> head_over_alphabet_;
+    // std::unordered_map<std::string, std::string> head_over_alphabet_;
+    std::unordered_map<std::string, std::string> first_head_over_letter_;
+    std::unordered_map<std::string, std::string> second_head_over_letter_;
 
     // (old state) -> (new state, scanning for the first letter)
     std::unordered_map<std::string, std::string> state_aliases_;
 
     void create_new_symbols_() {
-        important_states_.semi_start = res_states_.generate("semi-start");
+        important_idents_.semi_start = res_states_.generate("semi-start");
 
-        important_states_.letter_tape_start =
+        important_idents_.letter_tape_start =
             res_alphabet_.generate("tape_start");
 
-        important_states_.letter_word_end = res_alphabet_.generate("word_end");
+        important_idents_.letter_word_end = res_alphabet_.generate("word_end");
 
         for (const std::string &letter : input_.working_alphabet()) {
-            head_over_alphabet_[letter] = res_alphabet_.generate(letter + "_H");
+            first_head_over_letter_[letter] =
+                res_alphabet_.generate(letter + "_h");
+
+            second_head_over_letter_[letter] =
+                res_alphabet_.generate(letter + "__H");
         }
     }
 
@@ -41,27 +49,49 @@ class Translation {
         // TODO
     }
 
-    void program_transition_(const std::string &new_identifier,
-                             const std::string &old_initial,
+    void program_head_move_(){};
+
+    void program_transition_(const State &new_identifier,
+                             const State &old_initial,
                              const std::string &first_letter,
                              const std::string &second_letter) {
-        for (const auto &[letter, letter_with_head] : head_over_alphabet_) {
+        for (const auto &letter : input_.working_alphabet()) {
             result_transitions_[std::make_pair(new_identifier,
                                                std::vector{letter})] =
                 std::make_tuple(new_identifier, std::vector{letter}, HEAD_LEFT);
-
-            result_transitions_[std::make_pair(new_identifier,
-                                               std::vector{letter_with_head})] =
-                std::make_tuple(new_identifier, std::vector{letter_with_head},
-                                HEAD_LEFT);
         }
+
+        const auto target = input_.transitions.find(std::make_pair(
+            old_initial, std::vector{first_letter, second_letter}));
+
+        if (target == input_.transitions.end()) {
+            return;
+        }
+
+        // program letter change
+        const State move_second_head = res_states_.generate(
+            old_initial + "-" + first_letter + "-" + second_letter);
+        result_transitions_[std::make_pair(
+            new_identifier,
+            std::vector{second_head_over_letter_[second_letter]})] =
+            std::make_tuple(move_second_head,
+                            std::vector{std::get<1>(target->second)[1]},
+                            HEAD_STAY);
+
+        // program_head_move
+
+        // program_letter_change_();
+
+        program_head_move_();
+
+        const State target_state = std::get<0>(target->second);
     }
 
     void create_states_grid_() {
 
         for (const auto &state : input_.set_of_states()) {
             if (state == INITIAL_STATE) {
-                state_aliases_[state] = important_states_.semi_start;
+                state_aliases_[state] = important_idents_.semi_start;
             } else if (state == ACCEPTING_STATE || state == REJECTING_STATE) {
                 state_aliases_[state] = state;
             } else {
@@ -77,8 +107,16 @@ class Translation {
 
             const auto looking_for_first_letter_ = state_aliases_[state];
 
+            result_transitions_[std::make_pair(
+                looking_for_first_letter_,
+                std::vector{important_idents_.letter_tape_start})] =
+                std::make_tuple(
+                    looking_for_first_letter_,
+                    std::vector{important_idents_.letter_tape_start},
+                    HEAD_RIGHT);
+
             for (const auto &[first_letter, first_letter_with_head] :
-                 head_over_alphabet_) {
+                 first_head_over_letter_) {
 
                 // didn't find the underlined letter
                 result_transitions_[std::make_pair(looking_for_first_letter_,
@@ -98,7 +136,7 @@ class Translation {
                                     HEAD_RIGHT);
 
                 for (const auto &[second_letter, second_letter_with_head] :
-                     head_over_alphabet_) {
+                     second_head_over_letter_) {
                     result_transitions_[std::make_pair(
                         looking_for_second_letter,
                         std::vector{second_letter})] =
@@ -129,8 +167,6 @@ class Translation {
                                   const std::string &move) {}
 
   public:
-    typedef std::string State;
-
     Translation(const TuringMachine &input)
         : input_(input), result_transitions_(),
           res_alphabet_(input.working_alphabet()), res_states_() {
