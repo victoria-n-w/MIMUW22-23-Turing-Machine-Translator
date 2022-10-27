@@ -5,16 +5,10 @@
 #include "symbol_set.h"
 #include "turing_machine.h"
 
-struct ImportantStates {
+struct ImportantIdents {
     std::string semi_start;
-};
-
-struct hash_tuple {
-    size_t operator()(
-        const std::tuple<std::string, std::string, std::string> &x) const {
-        std::hash<std::string> h{};
-        return h(std::get<0>(x)) ^ h(std::get<1>(x)) ^ h(std::get<2>(x));
-    }
+    std::string letter_tape_start;
+    std::string letter_word_end;
 };
 
 class Translation {
@@ -23,20 +17,43 @@ class Translation {
     transitions_t result_transitions_;
 
     SymbolSet res_alphabet_, res_states_;
-    ImportantStates important_states_;
+    ImportantIdents important_states_;
 
     std::unordered_map<std::string, std::string> head_over_alphabet_;
 
     // (old state) -> (new state, scanning for the first letter)
-    std::unordered_map<std::string, std::string> start_scanning_;
-
-    void create_basic_states_(){
-        // TODO pseudostart
-    };
+    std::unordered_map<std::string, std::string> state_aliases_;
 
     void create_new_symbols_() {
+        important_states_.semi_start = res_states_.generate("semi-start");
+
+        important_states_.letter_tape_start =
+            res_alphabet_.generate("tape_start");
+
+        important_states_.letter_word_end = res_alphabet_.generate("word_end");
+
         for (const std::string &letter : input_.working_alphabet()) {
             head_over_alphabet_[letter] = res_alphabet_.generate(letter + "_H");
+        }
+    }
+
+    void program_setup_() {
+        // TODO
+    }
+
+    void program_transition_(const std::string &new_identifier,
+                             const std::string &old_initial,
+                             const std::string &first_letter,
+                             const std::string &second_letter) {
+        for (const auto &[letter, letter_with_head] : head_over_alphabet_) {
+            result_transitions_[std::make_pair(new_identifier,
+                                               std::vector{letter})] =
+                std::make_tuple(new_identifier, std::vector{letter}, HEAD_LEFT);
+
+            result_transitions_[std::make_pair(new_identifier,
+                                               std::vector{letter_with_head})] =
+                std::make_tuple(new_identifier, std::vector{letter_with_head},
+                                HEAD_LEFT);
         }
     }
 
@@ -44,22 +61,29 @@ class Translation {
 
         for (const auto &state : input_.set_of_states()) {
             if (state == INITIAL_STATE) {
-                start_scanning_[state] = important_states_.semi_start;
+                state_aliases_[state] = important_states_.semi_start;
+            } else if (state == ACCEPTING_STATE || state == REJECTING_STATE) {
+                state_aliases_[state] = state;
             } else {
-                start_scanning_[state] = res_states_.generate(state);
+                state_aliases_[state] = res_states_.generate(state);
             }
         }
 
         for (const auto &state : input_.set_of_states()) {
-            const auto looking_for_first_letter = start_scanning_[state];
+
+            if (state == ACCEPTING_STATE || state == REJECTING_STATE) {
+                continue;
+            }
+
+            const auto looking_for_first_letter_ = state_aliases_[state];
 
             for (const auto &[first_letter, first_letter_with_head] :
                  head_over_alphabet_) {
 
                 // didn't find the underlined letter
-                result_transitions_[std::make_pair(looking_for_first_letter,
+                result_transitions_[std::make_pair(looking_for_first_letter_,
                                                    std::vector{first_letter})] =
-                    std::make_tuple(looking_for_first_letter,
+                    std::make_tuple(looking_for_first_letter_,
                                     std::vector{first_letter}, HEAD_RIGHT);
 
                 State looking_for_second_letter =
@@ -67,7 +91,7 @@ class Translation {
 
                 // found the underlined letter
                 result_transitions_[std::make_pair(
-                    looking_for_first_letter,
+                    looking_for_first_letter_,
                     std::vector{first_letter_with_head})] =
                     std::make_tuple(looking_for_second_letter,
                                     std::vector{first_letter_with_head},
@@ -75,9 +99,6 @@ class Translation {
 
                 for (const auto &[second_letter, second_letter_with_head] :
                      head_over_alphabet_) {
-                    // TODO czy sie mogą powatarzac symbole w alfabecie i
-                    // statnach
-
                     result_transitions_[std::make_pair(
                         looking_for_second_letter,
                         std::vector{second_letter})] =
@@ -93,6 +114,9 @@ class Translation {
                         std::make_tuple(simulated_state,
                                         std::vector{second_letter_with_head},
                                         HEAD_LEFT);
+
+                    program_transition_(simulated_state, state, first_letter,
+                                        second_letter);
                 }
             }
         }
@@ -110,9 +134,9 @@ class Translation {
     Translation(const TuringMachine &input)
         : input_(input), result_transitions_(),
           res_alphabet_(input.working_alphabet()), res_states_() {
-        create_basic_states_();
-
         create_new_symbols_();
+
+        program_setup_();
 
         create_states_grid_();
     }

@@ -1,3 +1,4 @@
+#include "turing_machine.h"
 #include <cassert>
 #include <cstddef>
 #include <cstdio>
@@ -5,25 +6,25 @@
 #include <iostream>
 #include <set>
 #include <string>
-#include "turing_machine.h"
 
 using namespace std;
 
 class Reader {
-public:
+  public:
     bool is_next_token_available() {
         return next_char != '\n' && next_char != EOF;
     }
-    
+
     string next_token() { // only in the current line
         assert(is_next_token_available());
         string res;
-        while (next_char != ' ' && next_char != '\t' && next_char != '\n' && next_char != EOF)
+        while (next_char != ' ' && next_char != '\t' && next_char != '\n' &&
+               next_char != EOF)
             res += get_next_char();
         skip_spaces();
         return res;
     }
-    
+
     void go_to_next_line() { // in particular skips empty lines
         assert(!is_next_token_available());
         while (next_char == '\n') {
@@ -31,11 +32,9 @@ public:
             skip_spaces();
         }
     }
-    
-    ~Reader() {
-        assert(fclose(input) == 0);
-    }
-    
+
+    ~Reader() { assert(fclose(input) == 0); }
+
     Reader(FILE *input_) : input(input_) {
         assert(input);
         get_next_char();
@@ -43,16 +42,14 @@ public:
         if (!is_next_token_available())
             go_to_next_line();
     }
-    
-    int get_line_num() const {
-        return line;
-    }
 
-private:
+    int get_line_num() const { return line; }
+
+  private:
     FILE *input;
     int next_char; // we always have the next char here
     int line = 1;
-    
+
     int get_next_char() {
         if (next_char == '\n')
             ++line;
@@ -63,7 +60,7 @@ private:
                 next_char = fgetc(input);
         return prev;
     }
-    
+
     void skip_spaces() {
         while (next_char == ' ' || next_char == '\t')
             get_next_char();
@@ -71,10 +68,8 @@ private:
 };
 
 static bool is_valid_char(int ch) {
-    return (ch >= 'a' && ch <= 'z')
-        || (ch >= 'A' && ch <= 'Z')
-        || (ch >= '0' && ch <= '9')
-        || ch == '_' || ch == '-';
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
 }
 
 static bool is_direction(int ch) {
@@ -94,7 +89,8 @@ static bool check_identifier(string ident, size_t &pos) {
     if (ident[pos] != '(')
         return false;
     size_t pos2 = pos + 1;
-    while (check_identifier(ident, pos2));
+    while (check_identifier(ident, pos2))
+        ;
     if (pos2 == pos + 1 || pos2 >= ident.size() || ident[pos2] != ')')
         return false;
     pos = pos2 + 1;
@@ -106,8 +102,10 @@ static bool is_identifier(string ident) {
     return check_identifier(ident, pos) && pos == ident.length();
 }
 
-TuringMachine::TuringMachine(int num_tapes_, vector<string> input_alphabet_, transitions_t transitions_)
-    : num_tapes(num_tapes_), input_alphabet(input_alphabet_), transitions(transitions_) {
+TuringMachine::TuringMachine(int num_tapes_, vector<string> input_alphabet_,
+                             transitions_t transitions_)
+    : num_tapes(num_tapes_), input_alphabet(input_alphabet_),
+      transitions(transitions_) {
     assert(num_tapes > 0);
     assert(!input_alphabet.empty());
     for (auto letter : input_alphabet)
@@ -118,17 +116,23 @@ TuringMachine::TuringMachine(int num_tapes_, vector<string> input_alphabet_, tra
         auto state_after = get<0>(transition.second);
         auto letters_after = get<1>(transition.second);
         auto directions = get<2>(transition.second);
-        assert(is_identifier(state_before) && state_before != ACCEPTING_STATE && state_before != REJECTING_STATE && is_identifier(state_after));
-        assert(letters_before.size() == (size_t)num_tapes && letters_after.size() == (size_t)num_tapes && directions.length() == (size_t)num_tapes);
+        // assert(is_identifier(state_before) && state_before != ACCEPTING_STATE
+        // && state_before != REJECTING_STATE && is_identifier(state_after));
+        assert(letters_before.size() == (size_t)num_tapes &&
+               letters_after.size() == (size_t)num_tapes &&
+               directions.length() == (size_t)num_tapes);
         for (int a = 0; a < num_tapes; ++a)
-            assert(is_identifier(letters_before[a]) && is_identifier(letters_after[a]) && is_direction(directions[a]));
+            assert(is_identifier(letters_before[a]) &&
+                   is_identifier(letters_after[a]) &&
+                   is_direction(directions[a]));
     }
 }
 
-#define syntax_error(reader, message) \
-    for(;;) { \
-        cerr << "Syntax error in line " << reader.get_line_num() << ": " << message << "\n"; \
-        exit(1); \
+#define syntax_error(reader, message)                                          \
+    for (;;) {                                                                 \
+        cerr << "Syntax error in line " << reader.get_line_num() << ": "       \
+             << message << "\n";                                               \
+        exit(1);                                                               \
     }
 
 static string read_identifier(Reader &reader) {
@@ -160,37 +164,42 @@ TuringMachine read_tm_from_file(FILE *input) {
         if (last != num_tapes_str.length() || num_tapes <= 0)
             throw 0;
     } catch (...) {
-        syntax_error(reader, "Positive integer expected after \"" NUM_TAPES "\"");
+        syntax_error(reader,
+                     "Positive integer expected after \"" NUM_TAPES "\"");
     }
     if (reader.is_next_token_available())
         syntax_error(reader, "Too many tokens in a line");
     reader.go_to_next_line();
-    
+
     // input alphabet
     vector<string> input_alphabet;
-    if (!reader.is_next_token_available() || reader.next_token() != INPUT_ALPHABET)
+    if (!reader.is_next_token_available() ||
+        reader.next_token() != INPUT_ALPHABET)
         syntax_error(reader, "\"" INPUT_ALPHABET "\" expected");
     while (reader.is_next_token_available()) {
         input_alphabet.emplace_back(read_identifier(reader));
         if (input_alphabet.back() == BLANK)
-            syntax_error(reader, "The blank letter \"" BLANK "\" is not allowed in the input alphabet");
+            syntax_error(reader, "The blank letter \"" BLANK
+                                 "\" is not allowed in the input alphabet");
     }
     if (input_alphabet.empty())
         syntax_error(reader, "Identifier expected");
     reader.go_to_next_line();
-    
+
     // transitions
     transitions_t transitions;
     while (reader.is_next_token_available()) {
         string state_before = read_identifier(reader);
         if (state_before == "(accept)" || state_before == "(reject)")
-            syntax_error(reader, "No transition can start in the \"" << state_before << "\" state");
+            syntax_error(reader, "No transition can start in the \""
+                                     << state_before << "\" state");
 
         vector<string> letters_before;
         for (int a = 0; a < num_tapes; ++a)
             letters_before.emplace_back(read_identifier(reader));
 
-        if (transitions.find(make_pair(state_before, letters_before)) != transitions.end())
+        if (transitions.find(make_pair(state_before, letters_before)) !=
+            transitions.end())
             syntax_error(reader, "The machine is not deterministic");
 
         string state_after = read_identifier(reader);
@@ -202,18 +211,23 @@ TuringMachine read_tm_from_file(FILE *input) {
         string directions;
         for (int a = 0; a < num_tapes; ++a) {
             string dir;
-            if (!reader.is_next_token_available() || (dir = reader.next_token()).length() != 1 || !is_direction(dir[0]))
-                syntax_error(reader, "Move direction expected, which should be " << HEAD_LEFT << ", " << HEAD_RIGHT << ", or " << HEAD_STAY);
+            if (!reader.is_next_token_available() ||
+                (dir = reader.next_token()).length() != 1 ||
+                !is_direction(dir[0]))
+                syntax_error(reader, "Move direction expected, which should be "
+                                         << HEAD_LEFT << ", " << HEAD_RIGHT
+                                         << ", or " << HEAD_STAY);
             directions += dir;
         }
-        
-        if (reader.is_next_token_available()) 
+
+        if (reader.is_next_token_available())
             syntax_error(reader, "Too many tokens in a line");
         reader.go_to_next_line();
-        
-        transitions[make_pair(state_before, letters_before)] = make_tuple(state_after, letters_after, directions);
+
+        transitions[make_pair(state_before, letters_before)] =
+            make_tuple(state_after, letters_after, directions);
     }
-    
+
     return TuringMachine(num_tapes, input_alphabet, transitions);
 }
 
@@ -228,7 +242,7 @@ vector<string> TuringMachine::working_alphabet() const {
     }
     return vector<string>(letters.begin(), letters.end());
 }
-    
+
 vector<string> TuringMachine::set_of_states() const {
     set<string> states;
     states.insert(INITIAL_STATE);
@@ -242,13 +256,12 @@ vector<string> TuringMachine::set_of_states() const {
 }
 
 static void output_vector(ostream &output, vector<string> v) {
-   for (string el : v)
+    for (string el : v)
         output << " " << el;
 }
-    
+
 void TuringMachine::save_to_file(ostream &output) const {
-    output << NUM_TAPES << " " << num_tapes << "\n"
-           << INPUT_ALPHABET;
+    output << NUM_TAPES << " " << num_tapes << "\n" << INPUT_ALPHABET;
     output_vector(output, input_alphabet);
     output << "\n";
     for (auto transition : transitions) {
