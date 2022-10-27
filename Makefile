@@ -1,4 +1,4 @@
-translator: translator.cpp turing_machine.cpp turing_machine.h 
+translator: translator.cpp turing_machine.cpp turing_machine.h symbol_set.cpp symbol_set.h
 	g++ -Wall -Wextra $(filter %.cpp,$^) -o $@
 
 tm_interpreter: tm_interpreter.cpp turing_machine.cpp turing_machine.h

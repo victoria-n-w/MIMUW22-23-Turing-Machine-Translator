@@ -5,11 +5,14 @@
 
 class SymbolSet {
   private:
-    std::unordered_set<std::string> symbols;
+    std::unordered_set<std::string> symbols_;
+
+    int counter_;
 
   public:
-    SymbolSet(const TuringMachine &tm);
-    ~SymbolSet();
+    SymbolSet(const std::vector<std::string> &symols);
+
+    SymbolSet() = default;
 
     std::string generate();
 
