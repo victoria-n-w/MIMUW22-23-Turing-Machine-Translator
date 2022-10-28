@@ -12,6 +12,7 @@ std::string SymbolSet::generate() {
     do {
         ss << "(" << std::hex << counter_++ << ")";
         ss >> res;
+        ss.clear();
     } while (symbols_.find(res) != symbols_.end());
 
     symbols_.insert(res);
@@ -22,7 +23,6 @@ std::string SymbolSet::generate(const std::string &inspiration) {
     int local_counter = 0;
 
     std::string res = "(" + inspiration + ")";
-
     if (symbols_.find(res) == symbols_.end()) {
         symbols_.insert(res);
         return res;
@@ -30,11 +30,10 @@ std::string SymbolSet::generate(const std::string &inspiration) {
         std::stringstream ss;
 
         do {
-            std::string hex;
 
-            ss << std::hex << local_counter;
-
-            res = "(" + inspiration + hex + ")";
+            ss << "(" << inspiration << std::hex << local_counter++ << ")";
+            ss >> res;
+            ss.clear();
         } while (symbols_.find(res) != symbols_.end());
         symbols_.insert(res);
         return res;

@@ -13,11 +13,11 @@ struct ImportantIdents {
 };
 
 struct LetterEncoding {
-    std::string no_head, first_head, second_head, both_heads;
+    std::string no_head, top_head, bottom_head, both_heads;
 };
 
 struct StateEncoding {
-    std::string start_scanning, going_back;
+    std::string do_scanning, going_back;
 };
 
 struct SimulatedState {
@@ -48,10 +48,8 @@ class Translation {
 
     ImportantIdents create_important_idents_();
 
+    // skips REJECTING and ACCEPTING states
     std::unordered_map<State, StateEncoding> create_state_aliases_();
-
-    std::vector<std::pair<SimulatedState, State>>
-    create_simulated_states_aliases_();
 
     void program_setup_protocol_(); // TODO
 
@@ -61,6 +59,14 @@ class Translation {
 
     void program_expanding_the_word_(); // TODO
 
+    void program_cleanup_(); // TODO
+
+    inline void new_transition_(const State &initial,
+                                const std::string &old_letter,
+                                const State &final,
+                                const std::string &new_letter,
+                                const char &head_move);
+
     const TuringMachine &input_;
     SymbolSet states_, letters_;
     LettersMap letters_map_;
@@ -68,7 +74,7 @@ class Translation {
     std::unordered_map<State, StateEncoding> state_aliases_;
     std::vector<std::pair<SimulatedState, State>> simulated_states_aliases_;
 
-    transitions_t res_transition_;
+    transitions_t res_transitions_;
 };
 
 Translation::Translation(const TuringMachine &input)
@@ -79,15 +85,29 @@ Translation::Translation(const TuringMachine &input)
       letters_(input.working_alphabet()),
       letters_map_(create_double_letters_()),
       importandt_idents_(create_important_idents_()),
-      state_aliases_(create_state_aliases_()),
-      simulated_states_aliases_(create_simulated_states_aliases_()) {
+      state_aliases_(create_state_aliases_()) {
+
+    /**
+     * Moves the input word one letter to the right, writing the tape begin
+     * symbol
+     * Leaves head on the first letter of the word, right after the tape begin
+     * symbol
+     */
     program_setup_protocol_();
 
+    /**
+     * The head is on the first letter of the word,
+     * right after the begginig of the tape symbol
+     *
+     * Leaves the head on the letter found second
+     */
     program_scanning_for_letters_();
 
     program_transitions_();
 
     program_expanding_the_word_();
+
+    program_cleanup_();
 }
 
 Translation::LettersMap Translation::create_double_letters_() {
@@ -96,9 +116,9 @@ Translation::LettersMap Translation::create_double_letters_() {
         for (const Letter &letter_bottom : input_.working_alphabet()) {
             res[std::make_pair(letter_top, letter_bottom)] = LetterEncoding{
                 .no_head = letters_.generate(letter_top + "-" + letter_bottom),
-                .first_head =
+                .top_head =
                     letters_.generate(letter_top + "_H-" + letter_bottom),
-                .second_head =
+                .bottom_head =
                     letters_.generate(letter_top + "-" + letter_bottom + "_H"),
                 .both_heads = letters_.generate(letter_top + "_H-" +
                                                 letter_bottom + "_H")};
@@ -119,43 +139,130 @@ std::unordered_map<Translation::State, StateEncoding>
 Translation::create_state_aliases_() {
     std::unordered_map<std::string, StateEncoding> res;
     for (const State &state : input_.set_of_states()) {
-        res[state] = StateEncoding{
-            .start_scanning = states_.generate(state + "-start-scanning"),
-            .going_back = states_.generate(state + "-going-back"),
-        };
+        if (state == INITIAL_STATE) {
+            res[state] = StateEncoding{
+                .do_scanning = importandt_idents_.semi_start,
+                .going_back = states_.generate(state + "-going-back"),
+            };
+        } else if (state != REJECTING_STATE && state != ACCEPTING_STATE) {
+            res[state] = StateEncoding{
+                .do_scanning = states_.generate(state + "-start-scanning"),
+                .going_back = states_.generate(state + "-going-back"),
+            };
+        }
+        // we skip the accepting and rejecting state
+        // because we will never start processing them (getting to them means
+        // end of the execution)
     }
     return res;
 }
 
-std::vector<std::pair<SimulatedState, Translation::State>>
-Translation::create_simulated_states_aliases_() {
-    std::vector<std::pair<SimulatedState, Translation::State>> res;
-    for (const State &state : input_.set_of_states()) {
-        for (const Letter &top_letter : input_.working_alphabet()) {
-            for (const Letter &bottom_letter : input_.working_alphabet()) {
-                res.push_back(std::make_pair(
-                    SimulatedState{
-                        .state = state,
-                        .top_letter = top_letter,
-                        .bottom_letter = bottom_letter,
-                    },
-                    states_.generate(state + "-" + top_letter + "-" +
-                                     bottom_letter)));
-            }
+void Translation::program_setup_protocol_() {}
+
+void Translation::program_scanning_for_letters_() {
+    for (const auto &[old_state_ident, state_alias] : state_aliases_) {
+        for (const auto &[letters_pair, letter_encoding] : letters_map_) {
+            const State top_letter_found = states_.generate(
+                old_state_ident + "-f-" + letters_pair.first + "-_");
+
+            const State bottom_letter_found = states_.generate(
+                old_state_ident + "-_-f-" + letters_pair.second);
+
+            new_transition_(state_alias.do_scanning, letter_encoding.no_head,
+                            state_alias.do_scanning, letter_encoding.no_head,
+                            HEAD_RIGHT);
+
+            new_transition_(state_alias.do_scanning, letter_encoding.top_head,
+                            top_letter_found, letter_encoding.top_head,
+                            HEAD_RIGHT);
+
+            new_transition_(state_alias.do_scanning,
+                            letter_encoding.bottom_head, bottom_letter_found,
+                            letter_encoding.bottom_head, HEAD_RIGHT);
+
+            const State found_both_letters =
+                states_.generate(old_state_ident + "-" + letters_pair.first +
+                                 "-" + letters_pair.second);
+
+            simulated_states_aliases_.push_back(std::make_pair(
+                SimulatedState{
+                    .state = old_state_ident,
+                    .top_letter = letters_pair.first,
+                    .bottom_letter = letters_pair.second,
+                },
+                found_both_letters));
+
+            new_transition_(state_alias.do_scanning, letter_encoding.both_heads,
+                            found_both_letters, letter_encoding.both_heads,
+                            HEAD_STAY);
+
+            new_transition_(top_letter_found, letter_encoding.no_head,
+                            top_letter_found, letter_encoding.no_head,
+                            HEAD_RIGHT);
+
+            new_transition_(top_letter_found, letter_encoding.bottom_head,
+                            found_both_letters, letter_encoding.bottom_head,
+                            HEAD_STAY);
+
+            new_transition_(bottom_letter_found, letter_encoding.no_head,
+                            bottom_letter_found, letter_encoding.no_head,
+                            HEAD_RIGHT);
+
+            new_transition_(bottom_letter_found, letter_encoding.top_head,
+                            found_both_letters, letter_encoding.top_head,
+                            HEAD_STAY);
         }
     }
 }
-
-void Translation::program_setup_protocol_() {}
-
-void Translation::program_scanning_for_letters_() {}
 
 void Translation::program_transitions_() {}
 
 void Translation::program_expanding_the_word_() {}
 
+void Translation::program_cleanup_() {
+    for (const auto &[old_state_ident, state_alias] : state_aliases_) {
+        for (const auto &[key, letters_encoding] : letters_map_) {
+            new_transition_(state_alias.going_back, letters_encoding.no_head,
+                            state_alias.going_back, letters_encoding.no_head,
+                            HEAD_LEFT);
+
+            new_transition_(state_alias.going_back,
+                            letters_encoding.bottom_head,
+                            state_alias.going_back,
+                            letters_encoding.bottom_head, HEAD_LEFT);
+
+            new_transition_(state_alias.going_back, letters_encoding.top_head,
+                            state_alias.going_back, letters_encoding.top_head,
+                            HEAD_LEFT);
+
+            new_transition_(state_alias.going_back, letters_encoding.both_heads,
+                            state_alias.going_back, letters_encoding.both_heads,
+                            HEAD_LEFT);
+        }
+
+        // once we reach the begging of the tape, start scanning for letters
+        new_transition_(state_alias.going_back,
+                        importandt_idents_.letter_tape_start,
+                        state_alias.do_scanning,
+                        importandt_idents_.letter_tape_start, HEAD_RIGHT);
+    }
+}
+
+void Translation::new_transition_(const State &initial,
+                                  const std::string &old_letter,
+                                  const State &final,
+                                  const std::string &new_letter,
+                                  const char &head_move) {
+    const auto key = std::make_pair(initial, std::vector{old_letter});
+
+    assert(res_transitions_.find(key) == res_transitions_.end());
+
+    res_transitions_[key] =
+        std::make_tuple(final, std::vector{new_letter}, std::string{head_move});
+}
+
 TuringMachine Translation::result() {
-    return TuringMachine(1, input_.input_alphabet, res_transition_);
+    return TuringMachine(1, input_.input_alphabet, res_transitions_);
 }
 
 int main(int argc, char *argv[]) {
