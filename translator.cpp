@@ -24,6 +24,10 @@ struct SimulatedState {
     std::string state, top_letter, bottom_letter;
 };
 
+struct FoundLetterEncodig {
+    std::string top_found, bottom_found;
+};
+
 struct pairhash {
     size_t operator()(const std::pair<std::string, std::string> &p) const {
         return std::hash<std::string>()(p.first + p.second);
@@ -160,13 +164,37 @@ Translation::create_state_aliases_() {
 void Translation::program_setup_protocol_() {}
 
 void Translation::program_scanning_for_letters_() {
-    for (const auto &[old_state_ident, state_alias] : state_aliases_) {
-        for (const auto &[letters_pair, letter_encoding] : letters_map_) {
-            const State top_letter_found = states_.generate(
-                old_state_ident + "-f-" + letters_pair.first + "-_");
+    std::unordered_map<std::pair<std::string, std::string>, FoundLetterEncodig,
+                       pairhash>
+        found_letter_encoding;
 
-            const State bottom_letter_found = states_.generate(
-                old_state_ident + "-_-f-" + letters_pair.second);
+    for (const auto &[old_state_ident, state_alias] : state_aliases_) {
+
+        for (const Letter &letter : input_.working_alphabet()) {
+            found_letter_encoding[std::make_pair(old_state_ident, letter)] =
+                FoundLetterEncodig{
+                    .top_found =
+                        states_.generate(old_state_ident + "-T-" + letter),
+                    .bottom_found =
+                        states_.generate(old_state_ident + "-B-" + letter),
+                };
+        }
+
+        for (const auto &[letters_pair, letter_encoding] : letters_map_) {
+
+            auto it = found_letter_encoding.find(
+                std::make_pair(old_state_ident, letters_pair.first));
+
+            assert(it != found_letter_encoding.end());
+
+            const State top_letter_found = it->second.top_found;
+
+            it = found_letter_encoding.find(
+                std::make_pair(old_state_ident, letters_pair.second));
+
+            assert(it != found_letter_encoding.end());
+
+            const State bottom_letter_found = it->second.bottom_found;
 
             new_transition_(state_alias.do_scanning, letter_encoding.no_head,
                             state_alias.do_scanning, letter_encoding.no_head,
