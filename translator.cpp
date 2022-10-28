@@ -243,7 +243,47 @@ void Translation::program_scanning_for_letters_() {
     }
 }
 
-void Translation::program_transitions_() {}
+void Translation::program_transitions_() {
+    for (const auto &it : simulated_states_aliases_) {
+        const auto &data = it.first;
+        const auto &alias = it.second;
+
+        const auto target_it = input_.transitions.find(std::make_pair(
+            data.state, std::vector{data.top_letter, data.bottom_letter}));
+
+        if (target_it == input_.transitions.end()) {
+            continue;
+        }
+
+        const auto &target_state = std::get<0>(target_it->second);
+        if (target_state == ACCEPTING_STATE ||
+            target_state == REJECTING_STATE) {
+
+            // bottom head is under real head
+            // top head can only be on the top letter scanned
+            // in which case, both heads are in the same cell
+            for (const auto &top_letter : input_.working_alphabet()) {
+                new_transition_(
+                    alias,
+                    letters_map_[std::make_pair(top_letter, data.bottom_letter)]
+                        .bottom_head,
+                    target_state, BLANK, HEAD_RIGHT);
+            }
+
+            new_transition_(alias,
+                            letters_map_[std::make_pair(data.top_letter,
+                                                        data.bottom_letter)]
+                                .both_heads,
+                            target_state, BLANK, HEAD_STAY);
+        }
+
+        const auto &top_letter_switch = std::get<1>(target_it->second)[0];
+        const auto &bottom_letter_switch = std::get<1>(target_it->second)[1];
+
+        const auto &top_head_move = std::get<2>(target_it->second)[0];
+        const auto &bottom_head_move = std::get<2>(target_it->second)[1];
+    }
+}
 
 void Translation::program_expanding_the_word_() {}
 
