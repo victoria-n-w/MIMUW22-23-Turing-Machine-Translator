@@ -20,6 +20,10 @@ struct StateEncoding {
     std::string start_scanning, going_back;
 };
 
+struct SimulatedState {
+    std::string state, top_letter, bottom_letter;
+};
+
 struct pairhash {
     size_t operator()(const std::pair<std::string, std::string> &p) const {
         return std::hash<std::string>()(p.first + p.second);
@@ -44,7 +48,10 @@ class Translation {
 
     ImportantIdents create_important_idents_();
 
-    std::unordered_map<std::string, StateEncoding> create_state_aliases_();
+    std::unordered_map<State, StateEncoding> create_state_aliases_();
+
+    std::vector<std::pair<SimulatedState, State>>
+    create_simulated_states_aliases_();
 
     void program_setup_protocol_(); // TODO
 
@@ -58,7 +65,10 @@ class Translation {
     SymbolSet states_, letters_;
     LettersMap letters_map_;
     ImportantIdents importandt_idents_;
-    std::unordered_map<std::string, StateEncoding> state_aliases_;
+    std::unordered_map<State, StateEncoding> state_aliases_;
+    std::vector<std::pair<SimulatedState, State>> simulated_states_aliases_;
+
+    transitions_t res_transition_;
 };
 
 Translation::Translation(const TuringMachine &input)
@@ -69,7 +79,8 @@ Translation::Translation(const TuringMachine &input)
       letters_(input.working_alphabet()),
       letters_map_(create_double_letters_()),
       importandt_idents_(create_important_idents_()),
-      state_aliases_(create_state_aliases_()) {
+      state_aliases_(create_state_aliases_()),
+      simulated_states_aliases_(create_simulated_states_aliases_()) {
     program_setup_protocol_();
 
     program_scanning_for_letters_();
@@ -97,21 +108,54 @@ Translation::LettersMap Translation::create_double_letters_() {
 }
 
 ImportantIdents Translation::create_important_idents_() {
-    return ImportantIdents{.letter_tape_start = letters_.generate("tape-start"),
-                           .letter_word_end = letters_.generate("word-end"),
-                           .semi_start = letters_.generate("semi-start")};
+    return ImportantIdents{
+        .semi_start = letters_.generate("semi-start"),
+        .letter_tape_start = letters_.generate("tape-start"),
+        .letter_word_end = letters_.generate("word-end"),
+    };
 }
 
-std::unordered_map<std::string, StateEncoding>
+std::unordered_map<Translation::State, StateEncoding>
 Translation::create_state_aliases_() {
     std::unordered_map<std::string, StateEncoding> res;
     for (const State &state : input_.set_of_states()) {
         res[state] = StateEncoding{
-            .going_back = states_.generate(state + "-going-back"),
             .start_scanning = states_.generate(state + "-start-scanning"),
+            .going_back = states_.generate(state + "-going-back"),
         };
     }
     return res;
+}
+
+std::vector<std::pair<SimulatedState, Translation::State>>
+Translation::create_simulated_states_aliases_() {
+    std::vector<std::pair<SimulatedState, Translation::State>> res;
+    for (const State &state : input_.set_of_states()) {
+        for (const Letter &top_letter : input_.working_alphabet()) {
+            for (const Letter &bottom_letter : input_.working_alphabet()) {
+                res.push_back(std::make_pair(
+                    SimulatedState{
+                        .state = state,
+                        .top_letter = top_letter,
+                        .bottom_letter = bottom_letter,
+                    },
+                    states_.generate(state + "-" + top_letter + "-" +
+                                     bottom_letter)));
+            }
+        }
+    }
+}
+
+void Translation::program_setup_protocol_() {}
+
+void Translation::program_scanning_for_letters_() {}
+
+void Translation::program_transitions_() {}
+
+void Translation::program_expanding_the_word_() {}
+
+TuringMachine Translation::result() {
+    return TuringMachine(1, input_.input_alphabet, res_transition_);
 }
 
 int main(int argc, char *argv[]) {
