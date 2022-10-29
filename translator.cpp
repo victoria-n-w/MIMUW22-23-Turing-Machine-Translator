@@ -24,6 +24,31 @@ struct SimulatedState {
     std::string state, top_letter, bottom_letter;
 };
 
+struct SimulatedTransition {
+    std::string target_state, top_letter, bottom_letter;
+    char top_head_move, bottom_head_move;
+
+    bool operator==(const SimulatedTransition &other) const {
+        return top_head_move == other.top_head_move &&
+               bottom_head_move == other.bottom_head_move &&
+               target_state == other.target_state &&
+               top_letter == other.top_letter &&
+               bottom_letter == other.bottom_letter;
+    }
+};
+
+struct MovingState {
+    std::string top_bottom, bottom_top, both;
+};
+
+struct hash_transition {
+    size_t operator()(const SimulatedTransition &p) const {
+        return std::hash<std::string>()(p.target_state + " " + p.top_letter +
+                                        " " + p.bottom_letter +
+                                        p.top_head_move + p.bottom_head_move);
+    }
+};
+
 struct FoundLetterEncodig {
     std::string top_found, bottom_found;
 };
@@ -61,7 +86,7 @@ class Translation {
      * Leaves head on the first letter of the word, right after the tape begin
      * symbol
      */
-    void program_setup_protocol_(); // TODO
+    void program_setup_protocol_();
 
     /**
      * The head is on the first letter of the word,
@@ -69,16 +94,25 @@ class Translation {
      *
      * Leaves the head on the letter found second
      */
-    void program_scanning_for_letters_(); // TODO
+    void program_scanning_for_letters_();
 
     void program_transitions_(); // TODO
 
-    // TODO
-    // void program_reject_accept_(const std::string &state);
+    void program_reject_accept_(const SimulatedState &data,
+                                const std::string &target);
 
-    void program_expanding_the_word_(); // TODO
+    MovingState program_transition_(const SimulatedTransition &sim_transition);
 
-    void program_cleanup_(); // TODO
+    void program_move_top_(const SimulatedTransition &sim_transition,
+                           const State &in_state, const State &out_state);
+
+    void program_move_bottom_(const SimulatedTransition &sim_transition,
+                              const State &in_state, const State &out_state);
+
+    void program_move_both_(const SimulatedTransition &sim_transition,
+                            const State &input_state);
+
+    void program_cleanup_();
 
     inline void new_transition_(const State &initial,
                                 const std::string &old_letter,
@@ -112,8 +146,6 @@ Translation::Translation(const TuringMachine &input)
 
     program_transitions_();
 
-    program_expanding_the_word_();
-
     program_cleanup_();
 }
 
@@ -136,7 +168,7 @@ Translation::LettersMap Translation::create_double_letters_() {
 
 ImportantIdents Translation::create_important_idents_() {
     return ImportantIdents{
-        .semi_start = letters_.generate("semi-start"),
+        .semi_start = states_.generate("semi-start"),
         .letter_tape_start = letters_.generate("tape-start"),
         .letter_word_end = letters_.generate("word-end"),
     };
@@ -171,6 +203,15 @@ void Translation::program_setup_protocol_() {
     /**
      * special case for empty input (head is over blank)
      */
+    const auto move_first_blank = states_.generate("move-first-blank");
+    new_transition_(INITIAL_STATE, BLANK, move_first_blank,
+                    importandt_idents_.letter_tape_start, HEAD_RIGHT);
+    new_transition_(move_first_blank, BLANK, move_first_blank,
+                    letters_map_[std::make_pair(BLANK, BLANK)].both_heads,
+                    HEAD_LEFT);
+    new_transition_(move_first_blank, importandt_idents_.letter_tape_start,
+                    state_aliases_[INITIAL_STATE].do_scanning,
+                    importandt_idents_.letter_tape_start, HEAD_RIGHT);
 
     for (const Letter &letter : input_.input_alphabet) {
         const State move_curr_letter =
@@ -213,7 +254,8 @@ void Translation::program_setup_protocol_() {
 
     for (const Letter &letter_moved : input_.input_alphabet) {
         new_transition_(
-            moving_letter[letter_moved], BLANK, ACCEPTING_STATE,
+            moving_letter[letter_moved], BLANK,
+            state_aliases_[INITIAL_STATE].going_back,
             letters_map_[std::make_pair(letter_moved, BLANK)].no_head,
             HEAD_LEFT);
     }
@@ -300,9 +342,13 @@ void Translation::program_scanning_for_letters_() {
 }
 
 void Translation::program_transitions_() {
+
+    std::unordered_map<SimulatedTransition, MovingState, hash_transition>
+        transition_states;
+
     for (const auto &it : simulated_states_aliases_) {
         const auto &data = it.first;
-        const auto &alias = it.second;
+        const auto &input_state_alias = it.second;
 
         const auto target_it = input_.transitions.find(std::make_pair(
             data.state, std::vector{data.top_letter, data.bottom_letter}));
@@ -314,25 +360,163 @@ void Translation::program_transitions_() {
         const auto &target_state = std::get<0>(target_it->second);
         if (target_state == ACCEPTING_STATE ||
             target_state == REJECTING_STATE) {
-
-            // program_reject_accept_(data.state);
+            program_reject_accept_(data, target_state);
+            return;
         }
 
-        const auto &top_letter_switch = std::get<1>(target_it->second)[0];
-        const auto &bottom_letter_switch = std::get<1>(target_it->second)[1];
+        const auto simulated_transition = SimulatedTransition{
+            .target_state = target_state,
+            .top_letter = std::get<1>(target_it->second)[0],
+            .bottom_letter = std::get<1>(target_it->second)[1],
+            .top_head_move = std::get<2>(target_it->second)[0],
+            .bottom_head_move = std::get<2>(target_it->second)[1]};
 
-        const auto &top_head_move = std::get<2>(target_it->second)[0];
-        const auto &bottom_head_move = std::get<2>(target_it->second)[1];
+        auto transition_state_ptr =
+            transition_states.find(simulated_transition);
 
-        const auto looking_for_top_head = states_.generate(alias + "-TH");
-        const auto looking_for_bottom_head = states_.generate(alias + "-BH");
+        MovingState transition_state;
+
+        if (transition_state_ptr == transition_states.end()) {
+            transition_state = program_transition_(simulated_transition);
+            transition_states[simulated_transition] = transition_state;
+        } else {
+            transition_state = transition_state_ptr->second;
+        }
+
+        for (const Letter &letter : input_.working_alphabet()) {
+            // on current symbol, head on top
+            new_transition_(
+                input_state_alias,
+                letters_map_[std::make_pair(data.top_letter, letter)].top_head,
+                transition_state.top_bottom,
+                letters_map_[std::make_pair(data.top_letter, letter)].top_head,
+                HEAD_STAY);
+
+            // on current symbol head on bottom
+            new_transition_(
+                input_state_alias,
+                letters_map_[std::make_pair(letter, data.bottom_letter)]
+                    .bottom_head,
+                transition_state.bottom_top,
+                letters_map_[std::make_pair(letter, data.bottom_letter)]
+                    .bottom_head,
+                HEAD_STAY);
+        }
+        // both heads on current symbol
+
+        new_transition_(
+            input_state_alias,
+            letters_map_[std::make_pair(data.top_letter, data.bottom_letter)]
+                .both_heads,
+            transition_state.both,
+            letters_map_[std::make_pair(data.top_letter, data.bottom_letter)]
+                .both_heads,
+            HEAD_STAY);
     }
 }
 
-void Translation::program_expanding_the_word_() {}
+void Translation::program_reject_accept_(const SimulatedState &data,
+                                         const std::string &target) {
+    for (const auto &letter : input_.working_alphabet()) {
+
+        // on current symbol, head is on top
+        new_transition_(
+            data.state,
+            letters_map_[std::make_pair(data.top_letter, letter)].top_head,
+            target, BLANK, HEAD_STAY);
+
+        // on current symbol head is on bottom
+        new_transition_(data.state,
+                        letters_map_[std::make_pair(letter, data.bottom_letter)]
+                            .bottom_head,
+                        target, BLANK, HEAD_STAY);
+    }
+
+    new_transition_(
+        data.state,
+        letters_map_[std::make_pair(data.top_letter, data.bottom_letter)]
+            .both_heads,
+        target, BLANK, HEAD_STAY);
+}
+
+MovingState
+Translation::program_transition_(const SimulatedTransition &sim_transition) {
+
+    const State moving_both_heads = states_.generate(
+        sim_transition.target_state + "-" + sim_transition.top_letter + "-" +
+        sim_transition.bottom_letter + sim_transition.bottom_head_move +
+        sim_transition.top_head_move);
+
+    const State move_top_first = states_.generate();
+
+    State intermiediate = states_.generate();
+    program_move_top_(sim_transition, move_top_first, intermiediate);
+    program_move_bottom_(
+        sim_transition, intermiediate,
+        state_aliases_[sim_transition.target_state].going_back);
+
+    const State move_bottom_first = states_.generate();
+
+    intermiediate = states_.generate();
+    program_move_bottom_(sim_transition, move_bottom_first, intermiediate);
+    program_move_top_(sim_transition, intermiediate,
+                      state_aliases_[sim_transition.target_state].going_back);
+
+    if (sim_transition.bottom_head_move == sim_transition.top_head_move) {
+        program_move_both_(sim_transition, moving_both_heads);
+    } else {
+    }
+    return MovingState{.top_bottom = move_top_first,
+                       .bottom_top = move_bottom_first,
+                       .both = moving_both_heads};
+}
+
+void Translation::program_move_top_(const SimulatedTransition &sim_transition,
+                                    const State &in_state,
+                                    const State &out_state) {}
+
+void Translation::program_move_bottom_(
+    const SimulatedTransition &sim_transition, const State &in_state,
+    const State &out_state) {}
+
+void Translation::program_move_both_(const SimulatedTransition &sim_transition,
+                                     const State &input_state) {
+    const State intermidiate = states_.generate(
+        sim_transition.target_state + "-" + sim_transition.top_letter + "-" +
+        sim_transition.bottom_letter + sim_transition.bottom_head_move +
+        sim_transition.top_head_move);
+    for (const auto &[letters_pair, encoding] : letters_map_) {
+        if (sim_transition.top_head_move == HEAD_STAY) {
+            new_transition_(
+                input_state, encoding.both_heads,
+                state_aliases_[sim_transition.target_state].going_back,
+                letters_map_[std::make_pair(sim_transition.top_letter,
+                                            sim_transition.bottom_letter)]
+                    .both_heads,
+                HEAD_LEFT);
+        } else {
+            new_transition_(input_state, encoding.both_heads, intermidiate,
+                            encoding.no_head, sim_transition.top_head_move);
+
+            new_transition_(
+                intermidiate, encoding.no_head,
+                state_aliases_[sim_transition.target_state].going_back,
+                encoding.both_heads, HEAD_LEFT);
+        }
+    }
+    if (sim_transition.top_head_move == HEAD_RIGHT) {
+        // special case, we moved into a newly written blank
+        // this can only happen if we move the heads to the right
+        new_transition_(intermidiate, BLANK,
+                        state_aliases_[sim_transition.target_state].going_back,
+                        letters_map_[std::make_pair(BLANK, BLANK)].both_heads,
+                        HEAD_LEFT);
+    }
+}
 
 void Translation::program_cleanup_() {
     for (const auto &[old_state_ident, state_alias] : state_aliases_) {
+        assert(state_alias.going_back != "");
         for (const auto &[key, letters_encoding] : letters_map_) {
             new_transition_(state_alias.going_back, letters_encoding.no_head,
                             state_alias.going_back, letters_encoding.no_head,
