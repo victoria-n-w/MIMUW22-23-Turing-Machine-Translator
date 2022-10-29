@@ -124,6 +124,13 @@ class Translation {
 
         State marking_this_head = states_.generate();
 
+        if (target_head_move == HEAD_RIGHT) {
+            new_transition_(
+                marking_this_head, BLANK, out_state,
+                H::this_other_not(letters_map_[std::make_pair(BLANK, BLANK)]),
+                HEAD_LEFT);
+        }
+
         for (const Letter &other_letter : input_.working_alphabet()) {
 
             const auto encode_current_letter =
@@ -152,25 +159,19 @@ class Translation {
                                 marking_this_head,
                                 H::other_this_not(encode_current_letter),
                                 target_head_move);
-
-                const auto return_move =
-                    target_head_move == HEAD_RIGHT ? HEAD_LEFT : HEAD_RIGHT;
-
-                if (target_head_move == HEAD_RIGHT) {
-                    new_transition_(
-                        marking_this_head, BLANK, out_state,
-                        H::this_other_not(
-                            letters_map_[std::make_pair(BLANK, BLANK)]),
-                        return_move);
-                }
-
-                new_transition_(
-                    marking_this_head, encode_target_letter.no_head, out_state,
-                    H::this_other_not(encode_target_letter), return_move);
-                new_transition_(
-                    marking_this_head, H::other_this_not(encode_target_letter),
-                    out_state, encode_target_letter.both_heads, return_move);
             }
+        }
+
+        const auto return_move =
+            target_head_move == HEAD_RIGHT ? HEAD_LEFT : HEAD_RIGHT;
+        for (const auto &[letter_pair, letter_encoding] : letters_map_) {
+
+            new_transition_(marking_this_head, letter_encoding.no_head,
+                            out_state, H::this_other_not(letter_encoding),
+                            return_move);
+            new_transition_(marking_this_head,
+                            H::other_this_not(letter_encoding), out_state,
+                            letter_encoding.both_heads, return_move);
         }
     }
 

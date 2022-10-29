@@ -74,10 +74,6 @@ void Translation::program_setup_protocol_() {
     }
 
     std::unordered_map<Letter, State> moving_letter;
-    // if we we were to move a blank, go to the begining
-    // moving_letter[BLANK] = state_aliases_[INITIAL_STATE].going_back;
-
-    // TODO remove: for debug purpose only
 
     for (const Letter &letter : input_.input_alphabet) {
 
@@ -208,7 +204,7 @@ void Translation::program_transitions_() {
         if (target_state == ACCEPTING_STATE ||
             target_state == REJECTING_STATE) {
             program_reject_accept_(data, target_state);
-            return;
+            continue;
         }
 
         const auto target_data = TransitionTarget{
@@ -302,6 +298,18 @@ void Translation::program_cleanup_() {
         for (const auto &[key, letters_encoding] : letters_map_) {
             new_transition_(state_alias.going_back, letters_encoding.no_head,
                             state_alias.going_back, letters_encoding.no_head,
+                            HEAD_LEFT);
+
+            new_transition_(state_alias.going_back,
+                            letters_encoding.bottom_head,
+                            state_alias.going_back,
+                            letters_encoding.bottom_head, HEAD_LEFT);
+
+            new_transition_(state_alias.going_back, letters_encoding.top_head,
+                            state_alias.going_back, letters_encoding.top_head,
+                            HEAD_LEFT);
+            new_transition_(state_alias.going_back, letters_encoding.both_heads,
+                            state_alias.going_back, letters_encoding.both_heads,
                             HEAD_LEFT);
         }
 
