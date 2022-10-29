@@ -140,15 +140,11 @@ void Translation::program_scanning_for_letters_() {
                             HEAD_RIGHT);
 
             const State simualted_state =
-                states_.generate(old_state_ident + "-" + letter_pair.first +
-                                 "-" + letter_pair.second);
-            simulated_states_aliases_.push_back(std::make_pair(
-                SimulatedState{
+                create_or_get_simulated_state_alias_(SimulatedState{
                     .state = old_state_ident,
                     .top_letter = letter_pair.first,
                     .bottom_letter = letter_pair.second,
-                },
-                simualted_state));
+                });
 
             new_transition_(state_alias.do_scanning, letter_encoding.both_heads,
                             simualted_state, letter_encoding.both_heads,
@@ -162,9 +158,7 @@ void Translation::program_scanning_for_letters_() {
 }
 
 void Translation::program_transitions_() {
-    for (const auto &it : simulated_states_aliases_) {
-        const auto &data = it.first;
-        const auto &input_state_alias = it.second;
+    for (const auto &[data, input_state_alias] : simulated_states_) {
 
         const auto target_it = input_.transitions.find(std::make_pair(
             data.state, std::vector{data.top_letter, data.bottom_letter}));
@@ -306,6 +300,18 @@ void Translation::new_transition_(const State &initial,
 
     res_transitions_[key] =
         std::make_tuple(final, std::vector{new_letter}, std::string{head_move});
+}
+
+Translation::State
+Translation::create_or_get_simulated_state_alias_(const SimulatedState &key) {
+    const auto it = simulated_states_.find(key);
+    if (it == simulated_states_.end()) {
+        const auto res = states_.generate("found_both_letters");
+        simulated_states_[key] = res;
+        return res;
+    } else {
+        return it->second;
+    }
 }
 
 TuringMachine Translation::result() {

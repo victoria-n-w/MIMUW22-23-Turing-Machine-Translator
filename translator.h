@@ -30,7 +30,7 @@ struct SimulatedState {
 };
 
 struct hash_simulated_state {
-    size_t operator()(const SimulatedState &x) {
+    size_t operator()(const SimulatedState &x) const {
         return std::hash<std::string>()(x.state + " " + x.top_letter + " " +
                                         x.bottom_letter);
     }
@@ -150,12 +150,16 @@ class Translation {
                                 const std::string &new_letter,
                                 const char &head_move);
 
+    State create_or_get_simulated_state_alias_(const SimulatedState &key);
+
     const TuringMachine &input_;
     SymbolSet states_, letters_;
     LettersMap letters_map_;
     ImportantIdents importandt_idents_;
     std::unordered_map<State, StateEncoding> state_aliases_;
-    std::vector<std::pair<SimulatedState, State>> simulated_states_aliases_;
+
+    std::unordered_map<SimulatedState, State, hash_simulated_state>
+        simulated_states_;
 
     transitions_t res_transitions_;
 };
@@ -267,15 +271,11 @@ void Translation::program_scanning_letters_(const State &in_state,
                                 HEAD_RIGHT);
 
                 const auto found_both_letters =
-                    states_.generate("found_both_letters");
-
-                simulated_states_aliases_.push_back(std::make_pair(
-                    SimulatedState{
+                    create_or_get_simulated_state_alias_(SimulatedState{
                         .state = old_state_ident,
                         .top_letter = found_letter_pair.first,
                         .bottom_letter = found_letter_pair.second,
-                    },
-                    found_both_letters));
+                    });
 
                 new_transition_(found_first_letter,
                                 H::other_this_not(letter_encoding),
