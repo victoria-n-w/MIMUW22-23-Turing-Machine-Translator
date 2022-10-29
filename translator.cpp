@@ -1,5 +1,24 @@
 #include "translator.h"
 
+Translation::Translation(const TuringMachine &input)
+    : input_(input),
+      // we cannot allow for those identifiers to be generated
+      states_(std::vector<std::string>{INITIAL_STATE, ACCEPTING_STATE,
+                                       REJECTING_STATE}),
+      letters_(input.working_alphabet()),
+      letters_map_(create_double_letters_()),
+      importandt_idents_(create_important_idents_()),
+      state_aliases_(create_state_aliases_()) {
+
+    program_setup_protocol_();
+
+    program_scanning_for_letters_();
+
+    program_transitions_();
+
+    program_cleanup_();
+}
+
 Translation::LettersMap Translation::create_double_letters_() {
     LettersMap res;
     for (const Letter &letter_top : input_.working_alphabet()) {

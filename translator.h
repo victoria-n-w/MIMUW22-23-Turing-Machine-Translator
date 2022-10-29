@@ -22,6 +22,18 @@ struct StateEncoding {
 
 struct SimulatedState {
     std::string state, top_letter, bottom_letter;
+
+    bool operator==(const SimulatedState &other) const {
+        return state == other.state && top_letter == other.top_letter &&
+               bottom_letter == other.bottom_letter;
+    }
+};
+
+struct hash_simulated_state {
+    size_t operator()(const SimulatedState &x) {
+        return std::hash<std::string>()(x.state + " " + x.top_letter + " " +
+                                        x.bottom_letter);
+    }
 };
 
 struct TransitionTarget {
@@ -120,136 +132,17 @@ class Translation {
     template <typename H>
     void program_move_(const Letter &target_letter,
                        const char &target_head_move, const Letter &this_letter,
-                       const State &in_state, const State &out_state) {
-
-        State marking_this_head = states_.generate("marking_head");
-
-        if (target_head_move == HEAD_RIGHT) {
-            new_transition_(
-                marking_this_head, BLANK, out_state,
-                H::this_other_not(letters_map_[std::make_pair(BLANK, BLANK)]),
-                HEAD_LEFT);
-        }
-
-        for (const Letter &other_letter : input_.working_alphabet()) {
-
-            const auto encode_current_letter =
-                letters_map_[H::make_pair(this_letter, other_letter)];
-
-            const auto encode_target_letter =
-                letters_map_[H::make_pair(target_letter, other_letter)];
-
-            if (target_head_move == HEAD_STAY) {
-                new_transition_(
-                    in_state, H::this_other_not(encode_current_letter),
-                    out_state, H::this_other_not(encode_target_letter),
-                    HEAD_STAY);
-
-                new_transition_(in_state, encode_current_letter.both_heads,
-                                out_state, encode_target_letter.both_heads,
-                                HEAD_STAY);
-            } else {
-                // just top head
-                new_transition_(in_state,
-                                H::this_other_not(encode_current_letter),
-                                marking_this_head, encode_target_letter.no_head,
-                                target_head_move);
-                // bottom head is in the same cell
-                new_transition_(in_state, encode_current_letter.both_heads,
-                                marking_this_head,
-                                H::other_this_not(encode_target_letter),
-                                target_head_move);
-            }
-        }
-
-        const auto return_move =
-            target_head_move == HEAD_RIGHT ? HEAD_LEFT : HEAD_RIGHT;
-        for (const auto &[letter_pair, letter_encoding] : letters_map_) {
-
-            new_transition_(marking_this_head, letter_encoding.no_head,
-                            out_state, H::this_other_not(letter_encoding),
-                            return_move);
-            new_transition_(marking_this_head,
-                            H::other_this_not(letter_encoding), out_state,
-                            letter_encoding.both_heads, return_move);
-        }
-    }
+                       const State &in_state, const State &out_state);
 
     void program_cleanup_();
 
     template <typename H>
     void program_look_for_(const Letter &this_letter, const State &in_state,
-                           const State &out_state) {
-
-        for (const Letter &other_letter : input_.working_alphabet()) {
-            const auto letter_encoding =
-                letters_map_[H::make_pair(this_letter, other_letter)];
-
-            new_transition_(in_state, letter_encoding.both_heads, out_state,
-                            letter_encoding.both_heads, HEAD_STAY);
-
-            new_transition_(in_state, H::this_other_not(letter_encoding),
-                            out_state, H::this_other_not(letter_encoding),
-                            HEAD_STAY);
-        }
-
-        for (const auto &[letter_pair, letter_encoding] : letters_map_) {
-            new_transition_(in_state, letter_encoding.no_head, in_state,
-                            letter_encoding.no_head, HEAD_LEFT);
-
-            new_transition_(in_state, H::other_this_not(letter_encoding),
-                            in_state, H::other_this_not(letter_encoding),
-                            HEAD_LEFT);
-        }
-    }
+                           const State &out_state);
 
     template <typename H>
     void program_scanning_letters_(const State &in_state,
-                                   const State &old_state_ident) {
-        for (const Letter &first_letter : input_.working_alphabet()) {
-            const auto found_first_letter =
-                states_.generate("found_first_letter");
-
-            for (const auto &other_letter : input_.working_alphabet()) {
-                const auto letter_encoding =
-                    letters_map_[H::make_pair(first_letter, other_letter)];
-                new_transition_(in_state, H::this_other_not(letter_encoding),
-                                found_first_letter,
-                                H::this_other_not(letter_encoding), HEAD_RIGHT);
-            }
-
-            for (const auto &letter_without_head : input_.working_alphabet()) {
-                for (const auto &other_letter : input_.working_alphabet()) {
-
-                    const auto letter_pair =
-                        H::make_pair(letter_without_head, other_letter);
-                    const auto letter_encoding = letters_map_[letter_pair];
-
-                    const auto found_letter_pair =
-                        H::make_pair(first_letter, other_letter);
-                    new_transition_(found_first_letter, letter_encoding.no_head,
-                                    found_first_letter, letter_encoding.no_head,
-                                    HEAD_RIGHT);
-
-                    const auto found_both_letters =
-                        states_.generate("found_both_letters");
-
-                    simulated_states_aliases_.push_back(std::make_pair(
-                        SimulatedState{
-                            .state = old_state_ident,
-                            .top_letter = found_letter_pair.first,
-                            .bottom_letter = found_letter_pair.second,
-                        },
-                        found_both_letters));
-
-                    new_transition_(
-                        found_first_letter, H::other_this_not(letter_encoding),
-                        found_both_letters, H::other_this_not(letter_encoding),
-                        HEAD_STAY);
-                }
-            }
-        }
-    }
+                                   const State &old_state_ident);
 
     inline void new_transition_(const State &initial,
                                 const std::string &old_letter,
@@ -267,21 +160,128 @@ class Translation {
     transitions_t res_transitions_;
 };
 
-Translation::Translation(const TuringMachine &input)
-    : input_(input),
-      // we cannot allow for those identifiers to be generated
-      states_(std::vector<std::string>{INITIAL_STATE, ACCEPTING_STATE,
-                                       REJECTING_STATE}),
-      letters_(input.working_alphabet()),
-      letters_map_(create_double_letters_()),
-      importandt_idents_(create_important_idents_()),
-      state_aliases_(create_state_aliases_()) {
+template <typename H>
+void Translation::program_move_(const Letter &target_letter,
+                                const char &target_head_move,
+                                const Letter &this_letter,
+                                const State &in_state, const State &out_state) {
 
-    program_setup_protocol_();
+    State marking_this_head = states_.generate("marking_head");
 
-    program_scanning_for_letters_();
+    if (target_head_move == HEAD_RIGHT) {
+        new_transition_(
+            marking_this_head, BLANK, out_state,
+            H::this_other_not(letters_map_[std::make_pair(BLANK, BLANK)]),
+            HEAD_LEFT);
+    }
 
-    program_transitions_();
+    for (const Letter &other_letter : input_.working_alphabet()) {
 
-    program_cleanup_();
+        const auto encode_current_letter =
+            letters_map_[H::make_pair(this_letter, other_letter)];
+
+        const auto encode_target_letter =
+            letters_map_[H::make_pair(target_letter, other_letter)];
+
+        if (target_head_move == HEAD_STAY) {
+            new_transition_(in_state, H::this_other_not(encode_current_letter),
+                            out_state, H::this_other_not(encode_target_letter),
+                            HEAD_STAY);
+
+            new_transition_(in_state, encode_current_letter.both_heads,
+                            out_state, encode_target_letter.both_heads,
+                            HEAD_STAY);
+        } else {
+            // just top head
+            new_transition_(in_state, H::this_other_not(encode_current_letter),
+                            marking_this_head, encode_target_letter.no_head,
+                            target_head_move);
+            // bottom head is in the same cell
+            new_transition_(
+                in_state, encode_current_letter.both_heads, marking_this_head,
+                H::other_this_not(encode_target_letter), target_head_move);
+        }
+    }
+
+    const auto return_move =
+        target_head_move == HEAD_RIGHT ? HEAD_LEFT : HEAD_RIGHT;
+    for (const auto &[letter_pair, letter_encoding] : letters_map_) {
+
+        new_transition_(marking_this_head, letter_encoding.no_head, out_state,
+                        H::this_other_not(letter_encoding), return_move);
+        new_transition_(marking_this_head, H::other_this_not(letter_encoding),
+                        out_state, letter_encoding.both_heads, return_move);
+    }
+}
+
+template <typename H>
+void Translation::program_look_for_(const Letter &this_letter,
+                                    const State &in_state,
+                                    const State &out_state) {
+
+    for (const Letter &other_letter : input_.working_alphabet()) {
+        const auto letter_encoding =
+            letters_map_[H::make_pair(this_letter, other_letter)];
+
+        new_transition_(in_state, letter_encoding.both_heads, out_state,
+                        letter_encoding.both_heads, HEAD_STAY);
+
+        new_transition_(in_state, H::this_other_not(letter_encoding), out_state,
+                        H::this_other_not(letter_encoding), HEAD_STAY);
+    }
+
+    for (const auto &[letter_pair, letter_encoding] : letters_map_) {
+        new_transition_(in_state, letter_encoding.no_head, in_state,
+                        letter_encoding.no_head, HEAD_LEFT);
+
+        new_transition_(in_state, H::other_this_not(letter_encoding), in_state,
+                        H::other_this_not(letter_encoding), HEAD_LEFT);
+    }
+}
+
+template <typename H>
+void Translation::program_scanning_letters_(const State &in_state,
+                                            const State &old_state_ident) {
+    for (const Letter &first_letter : input_.working_alphabet()) {
+        const auto found_first_letter = states_.generate("found_first_letter");
+
+        for (const auto &other_letter : input_.working_alphabet()) {
+            const auto letter_encoding =
+                letters_map_[H::make_pair(first_letter, other_letter)];
+            new_transition_(in_state, H::this_other_not(letter_encoding),
+                            found_first_letter,
+                            H::this_other_not(letter_encoding), HEAD_RIGHT);
+        }
+
+        for (const auto &letter_without_head : input_.working_alphabet()) {
+            for (const auto &other_letter : input_.working_alphabet()) {
+
+                const auto letter_pair =
+                    H::make_pair(letter_without_head, other_letter);
+                const auto letter_encoding = letters_map_[letter_pair];
+
+                const auto found_letter_pair =
+                    H::make_pair(first_letter, other_letter);
+                new_transition_(found_first_letter, letter_encoding.no_head,
+                                found_first_letter, letter_encoding.no_head,
+                                HEAD_RIGHT);
+
+                const auto found_both_letters =
+                    states_.generate("found_both_letters");
+
+                simulated_states_aliases_.push_back(std::make_pair(
+                    SimulatedState{
+                        .state = old_state_ident,
+                        .top_letter = found_letter_pair.first,
+                        .bottom_letter = found_letter_pair.second,
+                    },
+                    found_both_letters));
+
+                new_transition_(found_first_letter,
+                                H::other_this_not(letter_encoding),
+                                found_both_letters,
+                                H::other_this_not(letter_encoding), HEAD_STAY);
+            }
+        }
+    }
 }
