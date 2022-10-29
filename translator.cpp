@@ -94,6 +94,13 @@ void Translation::program_setup_protocol_() {
 
     std::unordered_map<Letter, State> moving_letter;
 
+    for (const auto &[letter_to_write, state] : moing_first_letter) {
+        new_transition_(
+            state, BLANK, state_aliases_[INITIAL_STATE].going_back,
+            letters_map_[std::make_pair(letter_to_write, BLANK)].both_heads,
+            HEAD_LEFT);
+    }
+
     for (const Letter &letter : input_.input_alphabet) {
 
         const auto moving_letter_state =
