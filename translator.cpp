@@ -197,8 +197,8 @@ void Translation::program_transitions_() {
                 .both_heads,
             HEAD_STAY);
 
-        State intermiediate = states_.generate();
-        const State found_bottom = states_.generate();
+        State intermiediate = states_.generate("intemediate_top_bottom");
+        const State found_bottom = states_.generate("found_bottom_head");
         program_move_<Translation::TopHead>(
             target_data.top_letter, target_data.top_head_move, data.top_letter,
             move_top_first, intermiediate);
@@ -209,8 +209,8 @@ void Translation::program_transitions_() {
             data.bottom_letter, found_bottom,
             state_aliases_[target_data.target_state].going_back);
 
-        const State found_top = states_.generate();
-        intermiediate = states_.generate();
+        const State found_top = states_.generate("found_top_head");
+        intermiediate = states_.generate("intermediate_bottom_top");
         program_move_<Translation::BottomHead>(
             target_data.bottom_letter, target_data.bottom_head_move,
             data.bottom_letter, move_bottom_first, intermiediate);
