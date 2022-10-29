@@ -115,7 +115,7 @@ class Translation {
     void program_transitions_();
 
     void program_reject_accept_(const SimulatedState &data,
-                                const std::string &target);
+                                const State &in_staten, const State &target);
 
     template <typename H>
     void program_move_(const Letter &target_letter,
@@ -200,6 +200,50 @@ class Translation {
             new_transition_(in_state, H::other_this_not(letter_encoding),
                             in_state, H::other_this_not(letter_encoding),
                             HEAD_LEFT);
+        }
+    }
+
+    template <typename H>
+    void program_scanning_letters_(const State &in_state,
+                                   const State &old_state_ident) {
+        for (const Letter &first_letter : input_.working_alphabet()) {
+            const auto found_first_letter = states_.generate();
+
+            for (const auto &other_letter : input_.working_alphabet()) {
+                const auto letter_encoding =
+                    letters_map_[H::make_pair(first_letter, other_letter)];
+                new_transition_(in_state, H::this_other_not(letter_encoding),
+                                found_first_letter,
+                                H::this_other_not(letter_encoding), HEAD_RIGHT);
+            }
+
+            for (const auto &letter_without_head : input_.working_alphabet()) {
+                for (const auto &other_letter : input_.working_alphabet()) {
+
+                    const auto letter_pair =
+                        H::make_pair(letter_without_head, other_letter);
+                    const auto letter_encoding = letters_map_[letter_pair];
+
+                    new_transition_(found_first_letter, letter_encoding.no_head,
+                                    found_first_letter, letter_encoding.no_head,
+                                    HEAD_RIGHT);
+
+                    const auto found_both_letters = states_.generate();
+
+                    simulated_states_aliases_.push_back(std::make_pair(
+                        SimulatedState{
+                            .state = old_state_ident,
+                            .top_letter = letter_pair.first,
+                            .bottom_letter = letter_pair.second,
+                        },
+                        found_both_letters));
+
+                    new_transition_(
+                        found_first_letter, H::other_this_not(letter_encoding),
+                        found_both_letters, H::other_this_not(letter_encoding),
+                        HEAD_STAY);
+                }
+            }
         }
     }
 

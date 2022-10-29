@@ -115,76 +115,30 @@ void Translation::program_scanning_for_letters_() {
 
     for (const auto &[old_state_ident, state_alias] : state_aliases_) {
 
-        for (const Letter &letter : input_.working_alphabet()) {
-            found_letter_encoding[std::make_pair(old_state_ident, letter)] =
-                FoundLetterEncodig{
-                    .top_found =
-                        states_.generate(old_state_ident + "-T-" + letter),
-                    .bottom_found =
-                        states_.generate(old_state_ident + "-B-" + letter),
-                };
-        }
-
-        for (const auto &[letters_pair, letter_encoding] : letters_map_) {
-
-            auto it = found_letter_encoding.find(
-                std::make_pair(old_state_ident, letters_pair.first));
-
-            assert(it != found_letter_encoding.end());
-
-            const State top_letter_found = it->second.top_found;
-
-            it = found_letter_encoding.find(
-                std::make_pair(old_state_ident, letters_pair.second));
-
-            assert(it != found_letter_encoding.end());
-
-            const State bottom_letter_found = it->second.bottom_found;
-
+        for (const auto &[letter_pair, letter_encoding] : letters_map_) {
             new_transition_(state_alias.do_scanning, letter_encoding.no_head,
                             state_alias.do_scanning, letter_encoding.no_head,
                             HEAD_RIGHT);
 
-            new_transition_(state_alias.do_scanning, letter_encoding.top_head,
-                            top_letter_found, letter_encoding.top_head,
-                            HEAD_RIGHT);
-
-            new_transition_(state_alias.do_scanning,
-                            letter_encoding.bottom_head, bottom_letter_found,
-                            letter_encoding.bottom_head, HEAD_RIGHT);
-
-            const State found_both_letters =
-                states_.generate(old_state_ident + "-" + letters_pair.first +
-                                 "-" + letters_pair.second);
-
+            const State simualted_state =
+                states_.generate(old_state_ident + "-" + letter_pair.first +
+                                 "-" + letter_pair.second);
             simulated_states_aliases_.push_back(std::make_pair(
                 SimulatedState{
                     .state = old_state_ident,
-                    .top_letter = letters_pair.first,
-                    .bottom_letter = letters_pair.second,
+                    .top_letter = letter_pair.first,
+                    .bottom_letter = letter_pair.second,
                 },
-                found_both_letters));
+                simualted_state));
 
             new_transition_(state_alias.do_scanning, letter_encoding.both_heads,
-                            found_both_letters, letter_encoding.both_heads,
-                            HEAD_STAY);
-
-            new_transition_(top_letter_found, letter_encoding.no_head,
-                            top_letter_found, letter_encoding.no_head,
-                            HEAD_RIGHT);
-
-            new_transition_(top_letter_found, letter_encoding.bottom_head,
-                            found_both_letters, letter_encoding.bottom_head,
-                            HEAD_STAY);
-
-            new_transition_(bottom_letter_found, letter_encoding.no_head,
-                            bottom_letter_found, letter_encoding.no_head,
-                            HEAD_RIGHT);
-
-            new_transition_(bottom_letter_found, letter_encoding.top_head,
-                            found_both_letters, letter_encoding.top_head,
+                            simualted_state, letter_encoding.both_heads,
                             HEAD_STAY);
         }
+        program_scanning_letters_<TopHead>(state_alias.do_scanning,
+                                           old_state_ident);
+        program_scanning_letters_<BottomHead>(state_alias.do_scanning,
+                                              old_state_ident);
     }
 }
 
@@ -203,7 +157,7 @@ void Translation::program_transitions_() {
         const auto &target_state = std::get<0>(target_it->second);
         if (target_state == ACCEPTING_STATE ||
             target_state == REJECTING_STATE) {
-            program_reject_accept_(data, target_state);
+            program_reject_accept_(data, input_state_alias, target_state);
             continue;
         }
 
@@ -269,24 +223,25 @@ void Translation::program_transitions_() {
 }
 
 void Translation::program_reject_accept_(const SimulatedState &data,
-                                         const std::string &target) {
+                                         const State &in_state,
+                                         const State &target) {
     for (const auto &letter : input_.working_alphabet()) {
 
         // on current symbol, head is on top
         new_transition_(
-            data.state,
+            in_state,
             letters_map_[std::make_pair(data.top_letter, letter)].top_head,
             target, BLANK, HEAD_STAY);
 
         // on current symbol head is on bottom
-        new_transition_(data.state,
+        new_transition_(in_state,
                         letters_map_[std::make_pair(letter, data.bottom_letter)]
                             .bottom_head,
                         target, BLANK, HEAD_STAY);
     }
 
     new_transition_(
-        data.state,
+        in_state,
         letters_map_[std::make_pair(data.top_letter, data.bottom_letter)]
             .both_heads,
         target, BLANK, HEAD_STAY);
