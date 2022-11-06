@@ -136,9 +136,12 @@ class Translation {
 
     void program_cleanup_();
 
+    /**
+     * Goes left, until meeting the specified head
+     */
     template <typename H>
-    void program_look_for_(const Letter &this_letter, const State &in_state,
-                           const State &out_state);
+    void program_look_for_head_(const Letter &this_letter,
+                                const State &in_state, const State &out_state);
 
     template <typename H>
     void program_scanning_letters_(const State &in_state,
@@ -219,9 +222,9 @@ void Translation::program_move_(const Letter &target_letter,
 }
 
 template <typename H>
-void Translation::program_look_for_(const Letter &this_letter,
-                                    const State &in_state,
-                                    const State &out_state) {
+void Translation::program_look_for_head_(const Letter &this_letter,
+                                         const State &in_state,
+                                         const State &out_state) {
 
     for (const Letter &other_letter : input_.working_alphabet()) {
         const auto letter_encoding =

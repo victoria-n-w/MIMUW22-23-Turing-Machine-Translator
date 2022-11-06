@@ -222,8 +222,8 @@ void Translation::program_transitions_() {
         program_move_<Translation::TopHead>(
             target_data.top_letter, target_data.top_head_move, data.top_letter,
             move_top_first, intermiediate);
-        program_look_for_<Translation::BottomHead>(data.bottom_letter,
-                                                   intermiediate, found_bottom);
+        program_look_for_head_<Translation::BottomHead>(
+            data.bottom_letter, intermiediate, found_bottom);
         program_move_<Translation::BottomHead>(
             target_data.bottom_letter, target_data.bottom_head_move,
             data.bottom_letter, found_bottom,
@@ -234,8 +234,8 @@ void Translation::program_transitions_() {
         program_move_<Translation::BottomHead>(
             target_data.bottom_letter, target_data.bottom_head_move,
             data.bottom_letter, move_bottom_first, intermiediate);
-        program_look_for_<Translation::TopHead>(data.top_letter, intermiediate,
-                                                found_top);
+        program_look_for_head_<Translation::TopHead>(data.top_letter,
+                                                     intermiediate, found_top);
         program_move_<Translation::TopHead>(
             target_data.top_letter, target_data.top_head_move, data.top_letter,
             found_top, state_aliases_[target_data.target_state].going_back);
@@ -327,7 +327,11 @@ TuringMachine Translation::result() {
 
 int main(int argc, char *argv[]) {
     std::string filename = argv[1];
-    // TODO incorrect number of arguments
+
+    if (argc != 2) {
+        std::cerr << "Expected one argument" << std::endl;
+        return 1;
+    }
 
     FILE *f = fopen(filename.c_str(), "r");
     if (!f) {
